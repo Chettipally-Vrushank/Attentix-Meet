@@ -1,0 +1,52 @@
+datasource db {
+  provider = "postgresql"
+}
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../generated/prisma"
+}
+
+model User {
+  id           String               @id @default(uuid())
+  email        String               @unique
+  name         String
+  role         String               @default("USER")
+  passwordHash String
+  createdAt    DateTime             @default(now())
+  updatedAt    DateTime             @updatedAt
+  
+  // Relations
+  hostedMeetings Meeting[]          @relation("HostedMeetings")
+  participations MeetingParticipant[]
+}
+
+model Meeting {
+  id          String               @id @default(uuid())
+  title       String
+  hostId      String
+  scheduledAt DateTime
+  status      String               @default("SCHEDULED") // "SCHEDULED", "ACTIVE", "ENDED", "CANCELLED"
+  createdAt   DateTime             @default(now())
+  updatedAt   DateTime             @updatedAt
+
+  // Relations
+  host         User                 @relation("HostedMeetings", fields: [hostId], references: [id])
+  participants MeetingParticipant[]
+}
+
+model MeetingParticipant {
+  meetingId  String
+  userId     String
+  status     String   @default("INVITED") // "INVITED", "CONNECTED", "DISCONNECTED", "KICKED"
+  joinedAt   DateTime?
+  leftAt     DateTime?
+  kickedAt   DateTime?
+  kickReason String?
+
+  // Relations
+  meeting Meeting @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([meetingId, userId])
+}
