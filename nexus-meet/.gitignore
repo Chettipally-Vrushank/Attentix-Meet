@@ -11,3 +11,9 @@ dist
 *.log
 
 /generated/prisma
+
+# Python caches
+__pycache__/
+*.pyc
+.pytest_cache/
+

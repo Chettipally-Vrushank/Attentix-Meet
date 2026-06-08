@@ -12,41 +12,130 @@ model User {
   email        String               @unique
   name         String
   role         String               @default("USER")
-  passwordHash String
-  createdAt    DateTime             @default(now())
-  updatedAt    DateTime             @updatedAt
+  passwordHash String               @map("password_hash")
+  createdAt    DateTime             @default(now()) @map("created_at")
+  updatedAt    DateTime             @updatedAt @map("updated_at")
   
   // Relations
-  hostedMeetings Meeting[]          @relation("HostedMeetings")
-  participations MeetingParticipant[]
+  hostedMeetings   Meeting[]            @relation("HostedMeetings")
+  participations   MeetingParticipant[]
+  engagementLogs   EngagementLog[]
+  transcriptChunks TranscriptChunk[]
+  moderationEvents ModerationEvent[]
+
+  @@map("users")
 }
 
 model Meeting {
   id          String               @id @default(uuid())
   title       String
-  hostId      String
-  scheduledAt DateTime
+  hostId      String               @map("host_id")
+  scheduledAt DateTime             @map("scheduled_at")
   status      String               @default("SCHEDULED") // "SCHEDULED", "ACTIVE", "ENDED", "CANCELLED"
-  createdAt   DateTime             @default(now())
-  updatedAt   DateTime             @updatedAt
+  createdAt   DateTime             @default(now()) @map("created_at")
+  updatedAt   DateTime             @updatedAt @map("updated_at")
 
   // Relations
-  host         User                 @relation("HostedMeetings", fields: [hostId], references: [id])
-  participants MeetingParticipant[]
+  host             User                 @relation("HostedMeetings", fields: [hostId], references: [id], onDelete: Cascade)
+  participants     MeetingParticipant[]
+  engagementLogs   EngagementLog[]
+  transcriptChunks TranscriptChunk[]
+  moderationEvents ModerationEvent[]
+  analytics        MeetingAnalytics?
+
+  @@map("meetings")
 }
 
 model MeetingParticipant {
-  meetingId  String
-  userId     String
-  status     String   @default("INVITED") // "INVITED", "CONNECTED", "DISCONNECTED", "KICKED"
-  joinedAt   DateTime?
-  leftAt     DateTime?
-  kickedAt   DateTime?
-  kickReason String?
+  meetingId             String   @map("meeting_id")
+  userId                String   @map("user_id")
+  status                String   @default("INVITED") // "INVITED", "CONNECTED", "DISCONNECTED", "KICKED"
+  joinedAt              DateTime? @map("joined_at")
+  leftAt                DateTime? @map("left_at")
+  kickedAt              DateTime? @map("kicked_at")
+  kickReason            String?   @map("kick_reason")
+  totalSpeakingMs       Int       @default(0) @map("total_speaking_ms")
+  finalEngagementScore  Float?    @map("final_engagement_score")
 
   // Relations
   meeting Meeting @relation(fields: [meetingId], references: [id], onDelete: Cascade)
   user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@id([meetingId, userId])
+  @@map("meeting_participants")
+}
+
+model EngagementLog {
+  id                  String   @id @default(uuid())
+  meetingId           String   @map("meeting_id")
+  userId              String   @map("user_id")
+  timestamp           DateTime @default(now())
+  isTabVisible        Boolean? @map("is_tab_visible")
+  isWindowFocused     Boolean? @map("is_window_focused")
+  typingEventsPerMin  Float?   @map("typing_events_per_min")
+  mouseMovementScore  Float?   @map("mouse_movement_score")
+  headPitchDeg        Float?   @map("head_pitch_deg")
+  headYawDeg          Float?   @map("head_yaw_deg")
+  headRollDeg         Float?   @map("head_roll_deg")
+  eyeAspectRatio      Float?   @map("eye_aspect_ratio")
+  mouthAspectRatio    Float?   @map("mouth_aspect_ratio")
+  blinkRatePerMin     Float?   @map("blink_rate_per_min")
+  engagementScore     Float    @map("engagement_score")
+  videoWasOn          Boolean  @map("video_was_on")
+
+  meeting             Meeting  @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+  user                User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("engagement_logs")
+}
+
+model TranscriptChunk {
+  id                 String   @id @default(uuid())
+  meetingId          String   @map("meeting_id")
+  speakerId          String   @map("speaker_id")
+  timestamp          DateTime @default(now())
+  durationMs         Int      @map("duration_ms")
+  transcript         String
+  wasAnalyzed        Boolean  @default(false) @map("was_analyzed")
+  toxicityScore      Float    @map("toxicity_score")
+  toxicityCategory   String?  @map("toxicity_category")
+  flaggedForReview   Boolean  @default(false) @map("flagged_for_review")
+
+  meeting            Meeting  @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+  speaker            User     @relation(fields: [speakerId], references: [id], onDelete: Cascade)
+  moderationEvents   ModerationEvent[]
+
+  @@map("transcript_chunks")
+}
+
+model ModerationEvent {
+  id                 String   @id @default(uuid())
+  meetingId          String   @map("meeting_id")
+  timestamp          DateTime @default(now())
+  offendingUserId    String   @map("offending_user_id")
+  action             String   @default("USER_KICKED")
+  toxicityScore      Float    @map("toxicity_score")
+  toxicityCategory   String?  @map("toxicity_category")
+  transcriptChunkId  String   @map("transcript_chunk_id")
+  flaggedText        String   @map("flagged_text")
+  kickConfirmed      Boolean  @default(false) @map("kick_confirmed")
+
+  meeting            Meeting  @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+  offendingUser      User     @relation(fields: [offendingUserId], references: [id], onDelete: Cascade)
+  transcriptChunk    TranscriptChunk @relation(fields: [transcriptChunkId], references: [id], onDelete: Cascade)
+
+  @@map("moderation_events")
+}
+
+model MeetingAnalytics {
+  meetingId            String   @id @map("meeting_id")
+  avgEngagementScore   Float?   @map("avg_engagement_score")
+  totalSpeakingTimeMs  Int?     @map("total_speaking_time_ms")
+  toxicPhrasesCount    Int?     @map("toxic_phrases_count")
+  kickedParticipants   Int?     @map("kicked_participants")
+  summaryText          String?  @map("summary_text")
+
+  meeting              Meeting  @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+
+  @@map("meeting_analytics")
 }
