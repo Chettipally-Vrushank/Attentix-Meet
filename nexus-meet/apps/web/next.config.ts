@@ -1,7 +1,12 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  /* config options here */
+  webpack: (config) => {
+    // Required for MediaPipe WASM in Webpack
+    config.resolve.fallback = { fs: false, path: false };
+    return config;
+  },
+  turbopack: {},
 };
 
 export default nextConfig;

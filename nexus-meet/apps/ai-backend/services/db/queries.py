@@ -21,7 +21,7 @@ async def verify_participant_in_meeting(meeting_id: str, user_id: str) -> bool:
         row = result.fetchone()
         if not row:
             return False
-        return row[0] in ("INVITED", "CONNECTED")
+        return row[0] != "KICKED"
 
 
 async def insert_engagement_log(

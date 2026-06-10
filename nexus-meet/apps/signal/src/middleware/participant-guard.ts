@@ -22,9 +22,8 @@ export async function isParticipantAllowed(
 
     if (!record) return false;
 
-    // Only INVITED or CONNECTED users may join
-    // KICKED users are permanently blocked for this meeting
-    return record.status === "INVITED" || record.status === "CONNECTED";
+    // Only KICKED users are blocked from joining or rejoining
+    return record.status !== "KICKED";
 }
 
 /**

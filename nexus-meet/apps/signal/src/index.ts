@@ -20,6 +20,22 @@ const server = createServer(app);
 
 app.use(express.json());
 
+// CORS Middleware
+app.use((req, res, next) => {
+    const origin = req.headers.origin;
+    if (origin && origin.startsWith("http://localhost:")) {
+        res.setHeader("Access-Control-Allow-Origin", origin);
+    }
+    res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+    res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
+    res.setHeader("Access-Control-Allow-Credentials", "true");
+    if (req.method === "OPTIONS") {
+        res.sendStatus(200);
+    } else {
+        next();
+    }
+});
+
 // ── Socket.io setup ───────────────────────────────────────────
 
 const io = new Server<
@@ -155,6 +171,36 @@ app.post("/api/meetings", async (req, res) => {
     });
 
     res.json({ meeting });
+});
+
+// Get meetings for the authenticated user
+app.get("/api/meetings", async (req, res) => {
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith("Bearer ")) {
+        res.status(401).json({ error: "Missing or invalid token" });
+        return;
+    }
+    const token = authHeader.split(" ")[1];
+    let claims;
+    try {
+        const { verifyToken } = await import("./middleware/auth");
+        claims = verifyToken(token);
+    } catch {
+        res.status(401).json({ error: "Invalid token" });
+        return;
+    }
+
+    const userId = claims.sub;
+    const userMeetings = await prisma.meeting.findMany({
+        where: {
+            participants: {
+                some: { userId },
+            },
+        },
+        orderBy: { scheduledAt: "desc" },
+    });
+
+    res.json({ meetings: userMeetings });
 });
 
 // Health check
