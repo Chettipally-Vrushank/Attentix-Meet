@@ -44,6 +44,8 @@ async def websocket_telemetry(websocket: WebSocket, meeting_id: str):
             # 1. Receive JSON packet from client
             try:
                 data = await websocket.receive_json()
+            except WebSocketDisconnect:
+                raise
             except Exception as e:
                 logger.warning(f"Malformed JSON received: {e}")
                 await websocket.close(code=4000, reason="Malformed JSON packet")

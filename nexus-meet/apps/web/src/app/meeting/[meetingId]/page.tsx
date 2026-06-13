@@ -101,7 +101,7 @@ export default function MeetingRoom() {
           }}/>
           <span style={{ fontWeight: 600, fontSize: 15 }}>NexusMeet</span>
           <span style={{ color: "var(--text-muted)", fontSize: 13, fontFamily: "var(--font-mono)" }}>
-            {meetingId.slice(0, 8)}...
+            {meetingId ? meetingId.slice(0, 8) : ""}...
           </span>
         </div>
         <span style={{ fontSize: 13, color: "var(--text-secondary)" }}>

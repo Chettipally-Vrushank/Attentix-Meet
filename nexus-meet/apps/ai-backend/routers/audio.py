@@ -25,8 +25,7 @@ TARGET_BYTES = (CHUNKS_MS // 1000) * SAMPLE_RATE * BYTES_PER_SAMPLE  # 96,000 by
 async def websocket_audio(
     websocket: WebSocket,
     meeting_id: str,
-    token: str = Query(...),
-    user_id: str = Query(...)
+    token: str = Query(...)
 ):
     """
     WebSocket endpoint for real-time audio moderation.
@@ -34,7 +33,10 @@ async def websocket_audio(
     Buffers, runs VAD, transcribes via Whisper, checks toxicity via Toxic-BERT,
     inserts transcript chunks, logs moderation events, and auto-kicks on violation.
     """
-    # 1. Credentials check before accepting WebSocket connection
+    # Accept connection first to comply with ASGI protocol for subsequent close() calls
+    await websocket.accept()
+
+    # 1. Credentials check
     try:
         claims = decode_jwt(token)
     except ValueError as e:
@@ -46,9 +48,10 @@ async def websocket_audio(
         await websocket.close(code=4001, reason="Invalid session token")
         return
 
-    if claims.get("sub") != user_id:
-        logger.warning(f"User ID mismatch: token={claims.get('sub')} param={user_id}")
-        await websocket.close(code=4002, reason="User ID mismatch")
+    user_id = claims.get("sub")
+    if not user_id:
+        logger.warning("JWT claims missing 'sub' field")
+        await websocket.close(code=4002, reason="Invalid token claims")
         return
 
     # Check participant guard
@@ -58,8 +61,6 @@ async def websocket_audio(
         await websocket.close(code=4004, reason="Not authorized in meeting")
         return
 
-    # Accept connection
-    await websocket.accept()
     logger.info(f"Audio WebSocket accepted for user={user_id} meeting={meeting_id}")
 
     whisper = websocket.app.state.whisper
@@ -67,17 +68,33 @@ async def websocket_audio(
 
     # Buffer to accumulate incoming binary bytes
     audio_buffer = bytearray()
+    import json
 
     try:
-        while True:
-            # 2. Receive binary chunk from client
+        # 1. Read first message (which could be the JSON metadata packet)
+        msg = await websocket.receive()
+        if "text" in msg:
             try:
-                data = await websocket.receive_bytes()
+                meta = json.loads(msg["text"])
+                logger.info(f"Received audio session metadata: {meta}")
             except Exception as e:
-                logger.warning(f"Error receiving bytes: {e}")
-                break
+                logger.warning(f"Failed to parse audio metadata frame: {e}")
+        elif "bytes" in msg:
+            audio_buffer.extend(msg["bytes"])
+        elif msg.get("type") == "websocket.disconnect":
+            logger.info("Audio WebSocket disconnected during handshake")
+            return
 
-            audio_buffer.extend(data)
+        while True:
+            # 2. Receive chunk from client
+            msg = await websocket.receive()
+            if msg.get("type") == "websocket.disconnect":
+                break
+            
+            if "bytes" in msg:
+                audio_buffer.extend(msg["bytes"])
+            else:
+                continue
 
             # 3. Process accumulated bytes when threshold is reached
             while len(audio_buffer) >= TARGET_BYTES:

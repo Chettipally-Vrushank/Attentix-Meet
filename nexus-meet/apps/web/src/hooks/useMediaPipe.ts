@@ -79,83 +79,127 @@ export function useMediaPipe(videoRef: React.RefObject<HTMLVideoElement | null>,
     useEffect(() => {
         if (!active || !token || !userId || !meetingId || !videoRef.current) return;
 
+        let reconnectTimeout: ReturnType<typeof setTimeout> | undefined;
+        let ws: WebSocket | null = null;
+        let isUnmounted = false;
+
         const loadMediaPipe = async () => {
             const { FaceMesh } = await import("@mediapipe/face_mesh");
             const { Camera } = await import("@mediapipe/camera_utils");
 
             const faceMesh = await getFaceMeshInstance(FaceMesh);
+            if (isUnmounted) return;
 
-            console.log("🔌 [useMediaPipe] Connecting to AI Telemetry WS...");
-            // Open telemetry WebSocket connection
-            const ws = new WebSocket(
-                `${AI_URL}/ws/telemetry/${meetingId}?token=${token}`
-            );
-            wsRef.current = ws;
+            const connect = () => {
+                if (isUnmounted || wsRef.current) return;
 
-            ws.onopen = () => {
-                console.log("🔌 [useMediaPipe] Telemetry WS connected");
-            };
+                console.log("🔌 [useMediaPipe] Connecting to AI Telemetry WS...");
+                ws = new WebSocket(
+                    `${AI_URL}/ws/telemetry/${meetingId}?token=${token}`
+                );
+                wsRef.current = ws;
 
-            ws.onerror = (err) => {
-                console.error("❌ [useMediaPipe] Telemetry WS error:", err);
-            };
+                ws.onopen = () => {
+                    console.log("🔌 [useMediaPipe] Telemetry WS connected");
+                    // Send initial packet to establish connection states
+                    sendTelemetryPacket(null);
+                };
 
-            ws.onclose = (event) => {
-                console.log(`🔌 [useMediaPipe] Telemetry WS closed. Code: ${event.code}, Reason: ${event.reason}`);
-            };
+                ws.onerror = (err) => {
+                    console.error("❌ [useMediaPipe] Telemetry WS error:", err);
+                };
 
-            ws.onmessage = (e) => {
-                try {
-                    const data = JSON.parse(e.data);
-                    if (data.engagement_score !== undefined) {
-                        setMyScore(data.engagement_score, data.flags ?? []);
+                ws.onclose = (event) => {
+                    console.log(`🔌 [useMediaPipe] Telemetry WS closed. Code: ${event.code}, Reason: ${event.reason}`);
+                    wsRef.current = null;
+                    ws = null;
+                    if (!isUnmounted) {
+                        console.log("🔌 [useMediaPipe] Retrying connection in 3s...");
+                        reconnectTimeout = setTimeout(connect, 3000);
                     }
-                } catch { }
+                };
+
+                ws.onmessage = (e) => {
+                    try {
+                        const data = JSON.parse(e.data);
+                        if (data.engagement_score !== undefined) {
+                            setMyScore(data.engagement_score, data.flags ?? []);
+                        }
+                    } catch { }
+                };
             };
 
-            faceMesh.onResults((results: any) => {
-                if (!results.multiFaceLandmarks?.[0]) return;
-
-                const pts = results.multiFaceLandmarks[0];
-                const now = Date.now();
-                if (now - lastSendRef.current < INTERVAL_MS) return;
-                lastSendRef.current = now;
-
-                if (ws.readyState !== WebSocket.OPEN) return;
-
-                const earL = ear(pts, LEFT_EYE);
-                const earR = ear(pts, RIGHT_EYE);
-                const { yaw, pitch, roll } = headAngles(pts);
-                const mouthAR = mar(pts);
-
-                // Clamp facial values to avoid Pydantic schema validation failures (e.g. eye_aspect_ratio > 0.5)
-                const rawEar = (earL + earR) / 2;
-                const clampedEar = Math.max(0.0, Math.min(0.49, rawEar));
-                const clampedMouth = Math.max(0.0, Math.min(0.99, mouthAR));
+            const sendTelemetryPacket = (facialMetrics: any) => {
+                if (!ws || ws.readyState !== WebSocket.OPEN) return;
 
                 const packet = {
                     meeting_id: meetingId,
                     user_id: userId,
                     session_token: token,
                     mode: "video_on",
-                    timestamp_ms: now,
-                    facial: {
-                        head_pitch_deg: Math.max(-89.9, Math.min(89.9, pitch)),
-                        head_yaw_deg: Math.max(-89.9, Math.min(89.9, yaw)),
-                        head_roll_deg: Math.max(-89.9, Math.min(89.9, roll)),
-                        eye_aspect_ratio: clampedEar,
-                        mouth_aspect_ratio: clampedMouth,
-                        blink_rate_per_min: null,
+                    timestamp_ms: Date.now(),
+                    browser: {
+                        is_tab_visible: !document.hidden,
+                        is_window_focused: document.hasFocus(),
+                        typing_events_per_min: 0,
+                        mouse_movement_score: 0,
                     },
+                    facial: facialMetrics,
                 };
                 ws.send(JSON.stringify(packet));
+            };
+
+            connect();
+
+            faceMesh.onResults((results: any) => {
+                if (isUnmounted) return;
+                if (!results.multiFaceLandmarks?.[0]) {
+                    // Send packet indicating no face detected
+                    const now = Date.now();
+                    if (now - lastSendRef.current >= INTERVAL_MS) {
+                        lastSendRef.current = now;
+                        sendTelemetryPacket(null);
+                    }
+                    return;
+                }
+
+                const pts = results.multiFaceLandmarks[0];
+                const now = Date.now();
+                if (now - lastSendRef.current < INTERVAL_MS) return;
+                lastSendRef.current = now;
+
+                const earL = ear(pts, LEFT_EYE);
+                const earR = ear(pts, RIGHT_EYE);
+                const { yaw, pitch, roll } = headAngles(pts);
+                const mouthAR = mar(pts);
+
+                const rawEar = (earL + earR) / 2;
+                const clampedEar = Math.max(0.0, Math.min(0.49, rawEar));
+                const clampedMouth = Math.max(0.0, Math.min(0.99, mouthAR));
+
+                sendTelemetryPacket({
+                    head_pitch_deg: Math.max(-89.9, Math.min(89.9, pitch)),
+                    head_yaw_deg: Math.max(-89.9, Math.min(89.9, yaw)),
+                    head_roll_deg: Math.max(-89.9, Math.min(89.9, roll)),
+                    eye_aspect_ratio: clampedEar,
+                    mouth_aspect_ratio: clampedMouth,
+                    blink_rate_per_min: null,
+                });
             });
+
+            // Immediately send browser updates on visibility change
+            const handleVisibilityChange = () => {
+                sendTelemetryPacket(null);
+            };
+            document.addEventListener("visibilitychange", handleVisibilityChange);
+            document.addEventListener("focus", handleVisibilityChange);
+            document.addEventListener("blur", handleVisibilityChange);
 
             // Start camera loop
             if (videoRef.current) {
                 const camera = new Camera(videoRef.current, {
                     onFrame: async () => {
-                        if (videoRef.current && globalFaceMesh) {
+                        if (videoRef.current && globalFaceMesh && !isUnmounted) {
                             try {
                                 await globalFaceMesh.send({ image: videoRef.current });
                             } catch (err) {
@@ -168,24 +212,38 @@ export function useMediaPipe(videoRef: React.RefObject<HTMLVideoElement | null>,
                 cameraRef.current = camera;
                 camera.start();
             }
+
+            return () => {
+                document.removeEventListener("visibilitychange", handleVisibilityChange);
+                document.removeEventListener("focus", handleVisibilityChange);
+                document.removeEventListener("blur", handleVisibilityChange);
+            };
         };
 
-        loadMediaPipe();
+        let activeCleanup: (() => void) | undefined;
+        loadMediaPipe().then(cleanup => {
+            activeCleanup = cleanup;
+        });
 
         return () => {
+            isUnmounted = true;
+            clearTimeout(reconnectTimeout);
+            activeCleanup?.();
+            
             // Close active WebSocket
             wsRef.current?.close();
             wsRef.current = null;
+            ws = null;
             
             // Stop camera
             if (cameraRef.current) {
                 try {
                     cameraRef.current.stop();
                 } catch {}
-                cameraRef.current = null;
+                    cameraRef.current = null;
             }
             
-            // Clean up global FaceMesh callback to prevent memory leaks and orphan processing
+            // Clean up global FaceMesh callback
             if (globalFaceMesh) {
                 try {
                     globalFaceMesh.onResults(() => {});

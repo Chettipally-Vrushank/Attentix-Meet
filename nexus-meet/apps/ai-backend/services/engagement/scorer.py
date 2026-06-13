@@ -43,26 +43,37 @@ def _score_browser(b) -> tuple[float, list[str]]:
     score += min(5.0, (b.typing_events_per_min / 60) * 5)
     return score, flags
 
-def _score_facial(f, state: ParticipantScoreState) -> tuple[float, list[str]]:
+def _score_facial(f, state: ParticipantScoreState, b=None) -> tuple[float, list[str]]:
     score, flags = 100.0, []
-    if f.eye_aspect_ratio < Thresholds.EAR_DROWSY:
-        state.consecutive_drowsy += 1
-        score -= min(50, state.consecutive_drowsy * 10); flags.append("drowsy")
+    if b:
+        if not b.is_tab_visible:      score -= 40; flags.append("tab_hidden")
+        elif not b.is_window_focused: score -= 25; flags.append("window_blurred")
+
+    if f:
+        if f.eye_aspect_ratio < Thresholds.EAR_DROWSY:
+            state.consecutive_drowsy += 1
+            score -= min(50, state.consecutive_drowsy * 10); flags.append("drowsy")
+        else:
+            state.consecutive_drowsy = max(0, state.consecutive_drowsy - 1)
+        yaw = abs(f.head_yaw_deg)
+        if yaw > Thresholds.YAW_AWAY:
+            state.consecutive_away += 1
+            score -= min(40, state.consecutive_away * 8); flags.append("looking_away")
+        elif yaw > Thresholds.YAW_DISTRACTED:
+            score -= ((yaw - Thresholds.YAW_DISTRACTED) / 20) * 20; flags.append("head_turned")
+            state.consecutive_away = max(0, state.consecutive_away - 1)
+        else:
+            state.consecutive_away = max(0, state.consecutive_away - 1)
+        if abs(f.head_pitch_deg) > Thresholds.PITCH_DISTRACTED:
+            score -= min(15, (abs(f.head_pitch_deg) - 20) / 2); flags.append("head_tilted")
+        if f.mouth_aspect_ratio > Thresholds.MAR_YAWNING:
+            score -= 15; flags.append("yawning")
     else:
-        state.consecutive_drowsy = max(0, state.consecutive_drowsy - 1)
-    yaw = abs(f.head_yaw_deg)
-    if yaw > Thresholds.YAW_AWAY:
-        state.consecutive_away += 1
-        score -= min(40, state.consecutive_away * 8); flags.append("looking_away")
-    elif yaw > Thresholds.YAW_DISTRACTED:
-        score -= ((yaw - Thresholds.YAW_DISTRACTED) / 20) * 20; flags.append("head_turned")
-        state.consecutive_away = max(0, state.consecutive_away - 1)
-    else:
-        state.consecutive_away = max(0, state.consecutive_away - 1)
-    if abs(f.head_pitch_deg) > Thresholds.PITCH_DISTRACTED:
-        score -= min(15, (abs(f.head_pitch_deg) - 20) / 2); flags.append("head_tilted")
-    if f.mouth_aspect_ratio > Thresholds.MAR_YAWNING:
-        score -= 15; flags.append("yawning")
+        # If webcam is on but face is not detected:
+        # Only penalize if the tab is visible (if tab is hidden, MediaPipe is suspended by the browser).
+        if not b or b.is_tab_visible:
+            score = 0.0
+            flags.append("no_face_detected")
     return score, flags
 
 class EngagementScorer:
@@ -70,7 +81,7 @@ class EngagementScorer:
         if mode == "video_off":
             raw, flags = _score_browser(browser)
         else:
-            raw, flags = _score_facial(facial, state)
+            raw, flags = _score_facial(facial, state, browser)
         smooth = state.update_ema(raw)
         return ScoringResult(raw_score=raw, smooth_score=smooth, flags=flags)
 
