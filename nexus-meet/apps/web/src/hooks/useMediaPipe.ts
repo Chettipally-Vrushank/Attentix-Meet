@@ -75,6 +75,9 @@ export function useMediaPipe(videoRef: React.RefObject<HTMLVideoElement | null>,
     const rafRef = useRef<number | undefined>(undefined);
     const lastSendRef = useRef(0);
     const cameraRef = useRef<any>(null);
+    const typingRef = useRef(0);
+    const mouseDeltaRef = useRef(0);
+    const lastMouseRef = useRef({ x: 0, y: 0 });
 
     useEffect(() => {
         if (!active || !token || !userId || !meetingId || !videoRef.current) return;
@@ -82,6 +85,17 @@ export function useMediaPipe(videoRef: React.RefObject<HTMLVideoElement | null>,
         let reconnectTimeout: ReturnType<typeof setTimeout> | undefined;
         let ws: WebSocket | null = null;
         let isUnmounted = false;
+
+        // Track typing events
+        const onKey = () => { typingRef.current++; };
+        const onMove = (e: MouseEvent) => {
+            const dx = e.clientX - lastMouseRef.current.x;
+            const dy = e.clientY - lastMouseRef.current.y;
+            mouseDeltaRef.current += Math.sqrt(dx * dx + dy * dy);
+            lastMouseRef.current = { x: e.clientX, y: e.clientY };
+        };
+        window.addEventListener("keydown", onKey);
+        window.addEventListener("mousemove", onMove);
 
         const loadMediaPipe = async () => {
             const { FaceMesh } = await import("@mediapipe/face_mesh");
@@ -132,6 +146,11 @@ export function useMediaPipe(videoRef: React.RefObject<HTMLVideoElement | null>,
             const sendTelemetryPacket = (facialMetrics: any) => {
                 if (!ws || ws.readyState !== WebSocket.OPEN) return;
 
+                const typingRate = (typingRef.current / (INTERVAL_MS / 1000)) * 60;
+                const mouseScore = Math.min(1, mouseDeltaRef.current / 500);
+                typingRef.current = 0;
+                mouseDeltaRef.current = 0;
+
                 const packet = {
                     meeting_id: meetingId,
                     user_id: userId,
@@ -141,8 +160,8 @@ export function useMediaPipe(videoRef: React.RefObject<HTMLVideoElement | null>,
                     browser: {
                         is_tab_visible: !document.hidden,
                         is_window_focused: document.hasFocus(),
-                        typing_events_per_min: 0,
-                        mouse_movement_score: 0,
+                        typing_events_per_min: typingRate,
+                        mouse_movement_score: mouseScore,
                     },
                     facial: facialMetrics,
                 };
@@ -253,6 +272,9 @@ export function useMediaPipe(videoRef: React.RefObject<HTMLVideoElement | null>,
             if (rafRef.current) {
                 cancelAnimationFrame(rafRef.current);
             }
+
+            window.removeEventListener("keydown", onKey);
+            window.removeEventListener("mousemove", onMove);
         };
     }, [active, token, userId, meetingId]);
 }

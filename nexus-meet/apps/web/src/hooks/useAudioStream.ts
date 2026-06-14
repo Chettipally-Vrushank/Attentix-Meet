@@ -71,6 +71,9 @@ export function useAudioStream(stream: MediaStream | null, active: boolean) {
         // AudioContext → downsample to 16kHz mono → send PCM
         const ctx = new AudioContext({ sampleRate: SAMPLE_RATE });
         ctxRef.current = ctx;
+        if (ctx.state === "suspended") {
+            ctx.resume().catch(console.error);
+        }
         const src = ctx.createMediaStreamSource(stream);
         // 4096 buffer = ~256ms at 16kHz
         const node = ctx.createScriptProcessor(4096, 1, 1);
