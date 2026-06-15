@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useRef } from "react";
+import { useRouter } from "next/navigation";
 import { useMeetingStore } from "@/lib/store";
 
 const AI_URL = process.env.NEXT_PUBLIC_AI_URL ?? "ws://localhost:8000";
@@ -7,6 +8,7 @@ const SAMPLE_RATE = 16000;
 const CHUNK_MS = 3000;
 
 export function useAudioStream(stream: MediaStream | null, active: boolean) {
+    const router = useRouter();
     const { token, userId, meetingId } = useMeetingStore();
     const wsRef = useRef<WebSocket | null>(null);
     const ctxRef = useRef<AudioContext | null>(null);
@@ -47,6 +49,7 @@ export function useAudioStream(stream: MediaStream | null, active: boolean) {
                     const data = JSON.parse(e.data);
                     if (data.action === "user_kicked") {
                         console.warn("Toxicity kick triggered for:", data);
+                        router.push("/?kicked=true&reason=" + encodeURIComponent(data.reason || "Toxic behavior"));
                     }
                 } catch { }
             };

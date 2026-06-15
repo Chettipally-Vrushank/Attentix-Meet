@@ -164,6 +164,15 @@ async def websocket_audio(
                     else:
                         logger.error(f"Failed to trigger kick on signal server for user={user_id}")
 
+                    # Send kick notification message first
+                    try:
+                        await websocket.send_json({
+                            "action": "user_kicked",
+                            "reason": f"Auto-kick: toxic language ({category})"
+                        })
+                    except Exception:
+                        pass
+
                     # Close WebSocket connection immediately
                     await websocket.close(code=4008, reason="Kicked for toxic behavior")
                     return

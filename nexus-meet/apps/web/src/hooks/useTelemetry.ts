@@ -1,11 +1,13 @@
 "use client";
 import { useEffect, useRef } from "react";
+import { useRouter } from "next/navigation";
 import { useMeetingStore } from "@/lib/store";
 
 const AI_URL = process.env.NEXT_PUBLIC_AI_URL ?? "ws://localhost:8000";
 const INTERVAL_MS = 2500;
 
 export function useTelemetry(active: boolean) {
+    const router = useRouter();
     const { token, userId, meetingId, setMyScore } = useMeetingStore();
     const wsRef = useRef<WebSocket | null>(null);
     const typingRef = useRef(0);
@@ -71,7 +73,10 @@ export function useTelemetry(active: boolean) {
             ws.onmessage = (e) => {
                 try {
                     const data = JSON.parse(e.data);
-                    if (data.engagement_score !== undefined) {
+                    if (data.action === "user_kicked") {
+                        console.warn("Toxicity kick triggered for:", data);
+                        router.push("/?kicked=true&reason=" + encodeURIComponent(data.reason || "consistently low engagement"));
+                    } else if (data.engagement_score !== undefined) {
                         setMyScore(data.engagement_score, data.flags ?? []);
                     }
                 } catch { }

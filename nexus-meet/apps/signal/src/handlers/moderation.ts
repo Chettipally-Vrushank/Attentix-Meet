@@ -36,11 +36,8 @@ export async function kickUserFromRoom(
     const target = roomManager.getParticipant(meetingId, userId);
     if (!target) return false;
 
-    // 1. Notify the kicked user's client to disconnect
-    io.to(target.socketId).emit("room:user-kicked", { userId, reason });
-
-    // 2. Notify all others in the room
-    io.to(meetingId).emit("room:user-left", { userId });
+    // 1. Notify everyone in the room of the kick
+    io.to(meetingId).emit("room:user-kicked", { userId, reason });
 
     // 3. Force-disconnect the socket
     const targetSocket = io.sockets.sockets.get(target.socketId);

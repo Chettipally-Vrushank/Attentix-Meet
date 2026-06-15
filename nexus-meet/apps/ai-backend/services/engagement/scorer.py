@@ -27,6 +27,7 @@ class ParticipantScoreState:
         self.ema_score          = 75.0
         self.consecutive_drowsy = 0
         self.consecutive_away   = 0
+        self.low_engagement_started_at = None
 
     def update_ema(self, new_raw: float) -> float:
         a = Thresholds.SMOOTHING_ALPHA

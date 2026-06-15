@@ -32,6 +32,23 @@ export default function HomePage() {
   const [customMeetingId, setCustomMeetingId] = useState("");
   const [activeTab, setActiveTab] = useState("features");
 
+  // Kick message state from URL
+  const [kicked, setKicked] = useState(false);
+  const [kickReason, setKickReason] = useState("");
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const params = new URLSearchParams(window.location.search);
+      if (params.get("kicked") === "true") {
+        setKicked(true);
+        setKickReason(params.get("reason") || "");
+        // Clean URL parameter
+        const newUrl = window.location.pathname;
+        window.history.replaceState({}, document.title, newUrl);
+      }
+    }
+  }, []);
+
   // Users list (all users registered)
   const [users, setUsers] = useState<any[]>([]);
 
@@ -249,6 +266,28 @@ export default function HomePage() {
             </button>
           </div>
         </header>
+
+        {kicked && (
+          <div style={{
+            maxWidth: 1000,
+            margin: "24px auto 0",
+            background: "var(--danger-soft)",
+            border: "1px solid var(--danger)",
+            borderRadius: 12,
+            padding: "16px 20px",
+            display: "flex",
+            alignItems: "center",
+            gap: 12,
+            color: "var(--danger)",
+            position: "relative",
+            zIndex: 10
+          }}>
+            <Shield size={20} />
+            <div style={{ fontSize: 14 }}>
+              <strong style={{ fontWeight: 600 }}>Moderation Alert:</strong> You were removed from the meeting. Reason: {kickReason || "consistently low engagement / toxic behavior"}
+            </div>
+          </div>
+        )}
 
         {/* Hero Section */}
         <section style={{ 
@@ -571,6 +610,26 @@ export default function HomePage() {
       <main style={{
         flex: 1, maxWidth: 1000, width: "100%", margin: "40px auto", padding: "0 24px"
       }}>
+        {/* Kicked Alert Banner */}
+        {kicked && (
+          <div style={{
+            background: "var(--danger-soft)",
+            border: "1px solid var(--danger)",
+            borderRadius: 12,
+            padding: "16px 20px",
+            marginBottom: 24,
+            display: "flex",
+            alignItems: "center",
+            gap: 12,
+            color: "var(--danger)"
+          }}>
+            <Shield size={20} />
+            <div style={{ fontSize: 14 }}>
+              <strong style={{ fontWeight: 600 }}>Moderation Alert:</strong> You were removed from the meeting. Reason: {kickReason || "consistently low engagement / toxic behavior"}
+            </div>
+          </div>
+        )}
+
         {/* Welcome Section */}
         <div style={{ marginBottom: 32 }}>
           <h1 style={{ fontSize: 28, fontWeight: 600, letterSpacing: "-0.5px" }}>Good day, {userName}</h1>

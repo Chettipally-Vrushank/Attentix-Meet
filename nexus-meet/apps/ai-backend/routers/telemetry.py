@@ -5,7 +5,7 @@ from jose import JWTError
 from services.auth import decode_jwt
 from services.db.queries import verify_participant_in_meeting, insert_engagement_log
 from services.engagement.scorer import RoomEngagementManager
-from services.moderation.actions import send_engagement_alert
+from services.moderation.actions import send_engagement_alert, kick_user
 from schemas.telemetry import TelemetryPacket, EngagementResponse
 
 logger = logging.getLogger("nexusmeet.telemetry")
@@ -109,6 +109,41 @@ async def websocket_telemetry(websocket: WebSocket, meeting_id: str):
                 packet=packet,
                 score=result.clamped
             )
+
+            # 6.1 Check for low engagement kick (score < 30 for 5 consecutive minutes)
+            import time
+            state = manager._state(packet.user_id)
+            if result.clamped < 30.0:
+                if state.low_engagement_started_at is None:
+                    state.low_engagement_started_at = time.time()
+                    logger.info(f"User {packet.user_id} engagement dropped below 30. Starting timer.")
+                else:
+                    elapsed = time.time() - state.low_engagement_started_at
+                    logger.debug(f"User {packet.user_id} low engagement duration: {elapsed:.1f}s")
+                    if elapsed >= 300.0:  # 5 minutes
+                        logger.warning(f"🚨 User {packet.user_id} engagement below 30 for 5 consecutive minutes. Kicking...")
+                        # Trigger kick
+                        kicked = await kick_user(meeting_id, packet.user_id, reason="Auto-kick: low engagement")
+                        if kicked:
+                            logger.info(f"Successfully kicked user={packet.user_id} for low engagement")
+                        else:
+                            logger.error(f"Failed to kick user={packet.user_id} on signal server")
+
+                        # Send kick notification message
+                        try:
+                            await websocket.send_json({
+                                "action": "user_kicked",
+                                "reason": "Auto-kick: consistently low engagement"
+                            })
+                        except Exception:
+                            pass
+
+                        await websocket.close(code=4008, reason="Kicked for low engagement")
+                        return
+            else:
+                if state.low_engagement_started_at is not None:
+                    logger.info(f"User {packet.user_id} engagement recovered to {result.clamped:.1f}. Resetting timer.")
+                    state.low_engagement_started_at = None
 
             # 7. Respond to client
             response = EngagementResponse(

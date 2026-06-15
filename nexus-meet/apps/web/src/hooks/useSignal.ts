@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useRef, useCallback } from "react";
+import { useRouter } from "next/navigation";
 import { io, Socket } from "socket.io-client";
 import { useMeetingStore } from "@/lib/store";
 import { PeerManager } from "@/lib/webrtc/peer";
@@ -9,6 +10,7 @@ const SIGNAL_URL = process.env.NEXT_PUBLIC_SIGNAL_URL ?? "http://localhost:3001"
 export function useSignal(meetingId: string | null) {
     const socketRef = useRef<Socket | null>(null);
     const peerRef = useRef<PeerManager | null>(null);
+    const router = useRouter();
 
     const {
         token, userId,
@@ -80,6 +82,7 @@ export function useSignal(meetingId: string | null) {
                 // We were kicked
                 setModerationAlert({ message: `You were removed: ${reason}` });
                 socket.disconnect();
+                router.push("/?kicked=true&reason=" + encodeURIComponent(reason || "Kicked by moderator"));
             } else {
                 removeParticipant(uid);
                 peerRef.current?.removePeer(uid);
