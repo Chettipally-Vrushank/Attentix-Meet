@@ -1,7 +1,7 @@
 """
 REST endpoints called by Next.js dashboard to fetch post-meeting analytics.
 """
-from fastapi   import APIRouter, HTTPException
+from fastapi   import APIRouter, HTTPException, Header
 from sqlalchemy import text
 from services.db.client import AsyncSessionLocal
 import json
@@ -147,3 +147,82 @@ async def get_speaking_time(meeting_id: str):
         )
         rows = result.mappings().fetchall()
         return [dict(r) for r in rows]
+
+@router.get("/user/summary")
+async def get_user_summary(authorization: str = Header(None)):
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    token = authorization.split(" ")[1]
+    try:
+        from services.auth import decode_jwt
+        claims = decode_jwt(token)
+    except Exception:
+        raise HTTPException(status_code=401, detail="Invalid token")
+    user_id = claims.get("sub")
+
+    async with AsyncSessionLocal() as session:
+        # 1. Total meetings attended
+        attended_res = await session.execute(
+            text("""
+                SELECT COUNT(*) FROM meeting_participants
+                WHERE user_id = :uid AND joined_at IS NOT NULL
+            """),
+            {"uid": user_id}
+        )
+        total_meetings = attended_res.scalar() or 0
+
+        # 2. Average engagement score across all meetings
+        engagement_res = await session.execute(
+            text("""
+                SELECT COALESCE(AVG(engagement_score), 0.0)::double precision AS avg_engagement
+                FROM engagement_logs
+                WHERE user_id = :uid
+            """),
+            {"uid": user_id}
+        )
+        avg_engagement = engagement_res.scalar() or 0.0
+
+        # 3. Total speaking time (ms)
+        speaking_res = await session.execute(
+            text("""
+                SELECT COALESCE(SUM(total_speaking_ms), 0)::bigint AS total_speaking
+                FROM meeting_participants
+                WHERE user_id = :uid
+            """),
+            {"uid": user_id}
+        )
+        total_speaking_ms = speaking_res.scalar() or 0
+
+        # 4. Meeting history list
+        history_res = await session.execute(
+            text("""
+                SELECT 
+                    m.id, 
+                    m.title, 
+                    m.scheduled_at, 
+                    m.status, 
+                    mp.final_engagement_score, 
+                    mp.total_speaking_ms
+                FROM meeting_participants mp
+                JOIN meetings m ON m.id = mp.meeting_id
+                WHERE mp.user_id = :uid
+                ORDER BY m.scheduled_at DESC
+            """),
+            {"uid": user_id}
+        )
+        history_rows = history_res.mappings().fetchall()
+        
+        # Convert datetime objects to ISO strings for JSON serialization
+        history = []
+        for r in history_rows:
+            h = dict(r)
+            if h["scheduled_at"]:
+                h["scheduled_at"] = h["scheduled_at"].isoformat()
+            history.append(h)
+
+        return {
+            "total_meetings": total_meetings,
+            "avg_engagement": avg_engagement,
+            "total_speaking_ms": total_speaking_ms,
+            "history": history
+        }

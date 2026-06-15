@@ -92,7 +92,18 @@ export const useMeetingStore = create<MeetingStore>((set, get) => ({
   myScore:   75,
   myFlags:   [],
   roomAlert: false,
-  setMyScore:    (myScore, myFlags) => set({ myScore, myFlags }),
+  setMyScore:    (myScore, myFlags) => set((s) => {
+    const nextState: any = { myScore, myFlags };
+    if (s.userId) {
+      const m = new Map(s.participants);
+      const existing = m.get(s.userId);
+      if (existing) {
+        m.set(s.userId, { ...existing, engagementScore: myScore, flags: myFlags });
+        nextState.participants = m;
+      }
+    }
+    return nextState;
+  }),
   setRoomAlert:  (roomAlert)        => set({ roomAlert }),
 
   moderationAlert: null,

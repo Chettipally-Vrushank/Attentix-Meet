@@ -10,12 +10,16 @@ export interface ServerToClientEvents {
     "room:user-joined": (payload: UserJoinedPayload) => void;
     "room:user-left": (payload: UserLeftPayload) => void;
     "room:user-kicked": (payload: UserKickedPayload) => void;
+    "room:participants": (participants: UserJoinedPayload[]) => void;
 
     // Host alerts (only sent to host socket)
     "room:alert": (payload: RoomAlertPayload) => void;
 
     // Errors
     "error": (payload: ErrorPayload) => void;
+
+    // Engagement/score updates
+    "room:score-update": (payload: { userId: string; score: number; flags: string[] }) => void;
 }
 
 export interface ClientToServerEvents {
@@ -30,6 +34,9 @@ export interface ClientToServerEvents {
 
     // Host-only moderation
     "mod:kick-user": (payload: KickPayload) => void;
+
+    // Engagement/score updates
+    "meeting:score-update": (payload: { score: number; flags: string[] }) => void;
 }
 
 export interface InterServerEvents { }

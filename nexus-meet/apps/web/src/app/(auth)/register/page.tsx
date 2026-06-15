@@ -7,29 +7,31 @@ import { ArrowLeft } from "lucide-react";
 
 const SIGNAL_URL = process.env.NEXT_PUBLIC_SIGNAL_URL ?? "http://localhost:3001";
 
-export default function LoginPage() {
+export default function RegisterPage() {
   const router   = useRouter();
   const setAuth  = useMeetingStore(s => s.setAuth);
+  const [name,   setName]   = useState("");
   const [email,  setEmail]  = useState("");
   const [pass,   setPass]   = useState("");
   const [error,  setError]  = useState("");
   const [loading,setLoading]= useState(false);
 
-  const handleLogin = async () => {
-    if (!email.trim() || !pass.trim()) {
+  const handleRegister = async () => {
+    if (!name.trim() || !email.trim() || !pass.trim()) {
       setError("Please fill in all fields");
       return;
     }
     setLoading(true); setError("");
     try {
-      const res  = await fetch(`${SIGNAL_URL}/api/auth/login`, {
+      const res  = await fetch(`${SIGNAL_URL}/api/auth/register`, {
         method:  "POST",
         headers: { "Content-Type": "application/json" },
-        body:    JSON.stringify({ email, password: pass }),
+        body:    JSON.stringify({ name, email, password: pass }),
       });
-      if (!res.ok) throw new Error("Invalid email or password");
-      const { token, user } = await res.json();
-      setAuth(token, user.id, user.name);
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Registration failed");
+      
+      setAuth(data.token, data.user.id, data.user.name);
       router.push("/");
     } catch (e: any) {
       setError(e.message);
@@ -58,7 +60,7 @@ export default function LoginPage() {
         opacity: 0.3, pointerEvents: "none", zIndex: 0
       }}/>
 
-      {/* Back button to landing */}
+      {/* Back button */}
       <button
         onClick={() => router.push("/")}
         style={{
@@ -93,9 +95,9 @@ export default function LoginPage() {
           }}>
             <span style={{ fontSize: 22, fontWeight: "bold", color: "#fff" }}>⬡</span>
           </div>
-          <h1 style={{ fontSize: 24, fontWeight: 700, marginBottom: 8, letterSpacing: "-0.5px" }}>Sign in to NexusMeet</h1>
+          <h1 style={{ fontSize: 24, fontWeight: 700, marginBottom: 8, letterSpacing: "-0.5px" }}>Create your account</h1>
           <p style={{ color: "var(--text-secondary)", fontSize: 14 }}>
-            Enter your credentials to access your dashboard
+            Get started with your free trial today
           </p>
         </div>
 
@@ -110,8 +112,9 @@ export default function LoginPage() {
           </div>
         )}
 
-        {/* Input fields */}
+        {/* Form Fields */}
         {[
+          { label: "Full Name", value: name, set: setName, type: "text", placeholder: "Alice Host" },
           { label: "Email Address", value: email, set: setEmail, type: "email", placeholder: "you@example.com" },
           { label: "Password", value: pass, set: setPass, type: "password", placeholder: "••••••••" },
         ].map(({ label, value, set, type, placeholder }) => (
@@ -122,7 +125,7 @@ export default function LoginPage() {
             <input
               type={type} value={value} placeholder={placeholder}
               onChange={e => set(e.target.value)}
-              onKeyDown={e => e.key === "Enter" && handleLogin()}
+              onKeyDown={e => e.key === "Enter" && handleRegister()}
               style={{
                 width: "100%", padding: "11px 14px",
                 background: "var(--bg-raised)", border: "1px solid var(--border)",
@@ -136,7 +139,7 @@ export default function LoginPage() {
         ))}
 
         <button
-          onClick={handleLogin}
+          onClick={handleRegister}
           disabled={loading}
           style={{
             width: "100%", padding: "12px",
@@ -148,14 +151,14 @@ export default function LoginPage() {
             boxShadow: loading ? "none" : "0 4px 12px var(--accent-glow)"
           }}
         >
-          {loading ? "Signing in..." : "Sign In →"}
+          {loading ? "Creating account..." : "Sign Up →"}
         </button>
 
-        {/* Register Link */}
+        {/* Login Link */}
         <div style={{ marginTop: 24, textAlign: "center", fontSize: 13 }}>
-          <span style={{ color: "var(--text-secondary)" }}>Don't have an account? </span>
-          <Link href="/register" style={{ color: "var(--accent)", textDecoration: "none", fontWeight: 600 }}>
-            Sign Up
+          <span style={{ color: "var(--text-secondary)" }}>Already have an account? </span>
+          <Link href="/login" style={{ color: "var(--accent)", textDecoration: "none", fontWeight: 600 }}>
+            Sign In
           </Link>
         </div>
       </div>

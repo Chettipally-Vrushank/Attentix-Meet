@@ -33,39 +33,55 @@ export class PeerManager {
 
     /** Called when a new user joins — we initiate the offer */
     async createOffer(targetUserId: string) {
-        const pc = this._createPeer(targetUserId);
+        try {
+            const pc = this._createPeer(targetUserId);
 
-        const offer = await pc.createOffer();
-        await pc.setLocalDescription(offer);
+            const offer = await pc.createOffer();
+            await pc.setLocalDescription(offer);
 
-        this.socket.emit("signal:offer", {
-            targetUserId,
-            sdp: pc.localDescription,
-        });
+            this.socket.emit("signal:offer", {
+                targetUserId,
+                sdp: pc.localDescription,
+            });
+        } catch (err) {
+            console.error(`Error creating offer to ${targetUserId}:`, err);
+        }
     }
 
     /** Called when we receive an offer from another peer */
     async handleOffer(fromUserId: string, sdp: RTCSessionDescriptionInit) {
-        const pc = this._createPeer(fromUserId);
+        try {
+            const pc = this._createPeer(fromUserId);
 
-        await pc.setRemoteDescription(new RTCSessionDescription(sdp));
-        const answer = await pc.createAnswer();
-        await pc.setLocalDescription(answer);
+            await pc.setRemoteDescription(new RTCSessionDescription(sdp));
+            const answer = await pc.createAnswer();
+            await pc.setLocalDescription(answer);
 
-        this.socket.emit("signal:answer", {
-            targetUserId: fromUserId,
-            sdp: pc.localDescription,
-        });
+            this.socket.emit("signal:answer", {
+                targetUserId: fromUserId,
+                sdp: pc.localDescription,
+            });
+        } catch (err) {
+            console.error(`Error handling offer from ${fromUserId}:`, err);
+        }
     }
 
     async handleAnswer(fromUserId: string, sdp: RTCSessionDescriptionInit) {
-        const pc = this.peers.get(fromUserId);
-        if (pc) await pc.setRemoteDescription(new RTCSessionDescription(sdp));
+        try {
+            const pc = this.peers.get(fromUserId);
+            if (pc) await pc.setRemoteDescription(new RTCSessionDescription(sdp));
+        } catch (err) {
+            console.error(`Error handling answer from ${fromUserId}:`, err);
+        }
     }
 
     async handleIce(fromUserId: string, candidate: RTCIceCandidateInit) {
-        const pc = this.peers.get(fromUserId);
-        if (pc) await pc.addIceCandidate(new RTCIceCandidate(candidate));
+        try {
+            const pc = this.peers.get(fromUserId);
+            if (pc) await pc.addIceCandidate(new RTCIceCandidate(candidate));
+        } catch (err) {
+            console.error(`Error handling ICE candidate from ${fromUserId}:`, err);
+        }
     }
 
     removePeer(userId: string) {

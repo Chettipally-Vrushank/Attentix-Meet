@@ -14,8 +14,10 @@ export function useSignal(meetingId: string | null) {
         token, userId,
         localStream,
         addParticipant, removeParticipant,
+        updateParticipant,
         setParticipantStream,
         setRoomAlert, setModerationAlert,
+        myScore, myFlags,
     } = useMeetingStore();
 
     const connect = useCallback(() => {
@@ -54,6 +56,20 @@ export function useSignal(meetingId: string | null) {
             await peerRef.current?.createOffer(uid);
         });
 
+        socket.on("room:participants", (existingParticipants: Array<{ userId: string; name: string; isHost: boolean }>) => {
+            existingParticipants.forEach((p) => {
+                addParticipant({
+                    userId: p.userId,
+                    name: p.name,
+                    isHost: p.isHost,
+                    engagementScore: 75,
+                    flags: [],
+                    isMuted: false,
+                    videoOn: true,
+                });
+            });
+        });
+
         socket.on("room:user-left", ({ userId: uid }) => {
             removeParticipant(uid);
             peerRef.current?.removePeer(uid);
@@ -76,6 +92,13 @@ export function useSignal(meetingId: string | null) {
             setTimeout(() => { setRoomAlert(false); setModerationAlert(null); }, 6000);
         });
 
+        socket.on("room:score-update", ({ userId: uid, score, flags }) => {
+            updateParticipant(uid, {
+                engagementScore: score,
+                flags,
+            });
+        });
+
         // WebRTC signaling relay
         socket.on("signal:offer", ({ targetUserId, sdp }) =>
             peerRef.current?.handleOffer(targetUserId, sdp));
@@ -85,7 +108,7 @@ export function useSignal(meetingId: string | null) {
             peerRef.current?.handleIce(targetUserId, candidate));
 
         return socket;
-    }, [token, meetingId, localStream, userId]);
+    }, [token, meetingId, localStream, userId, updateParticipant]);
 
     useEffect(() => {
         const socket = connect();
@@ -94,6 +117,15 @@ export function useSignal(meetingId: string | null) {
             peerRef.current?.closeAll();
         };
     }, [connect]);
+
+    useEffect(() => {
+        if (socketRef.current) {
+            socketRef.current.emit("meeting:score-update", {
+                score: myScore,
+                flags: myFlags,
+            });
+        }
+    }, [myScore, myFlags]);
 
     const kickUser = useCallback((targetUserId: string) => {
         socketRef.current?.emit("mod:kick-user", { userId: targetUserId, meetingId });

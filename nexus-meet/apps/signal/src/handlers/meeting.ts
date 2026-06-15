@@ -48,6 +48,15 @@ export function registerMeetingHandlers(io: AppServer, socket: AppSocket) {
             if (!meeting) return;
 
             roomManager.ensureRoom(meetingId, meeting.hostId);
+
+            const existingParticipants = roomManager.getParticipantList(meetingId)
+                .filter((p) => p.userId !== userId)
+                .map((p) => ({
+                    userId: p.userId,
+                    name: p.name,
+                    isHost: p.isHost,
+                }));
+
             roomManager.addParticipant(meetingId, {
                 userId,
                 name: user.name,
@@ -57,6 +66,9 @@ export function registerMeetingHandlers(io: AppServer, socket: AppSocket) {
             });
 
             await markParticipantConnected(meetingId, userId);
+
+            // Send list of existing participants to the joining client
+            socket.emit("room:participants", existingParticipants);
 
             // Notify all OTHER participants in the room
             socket.to(meetingId).emit("room:user-joined", {
@@ -98,6 +110,14 @@ export function registerMeetingHandlers(io: AppServer, socket: AppSocket) {
                 candidate,
             });
         }
+    });
+
+    socket.on("meeting:score-update", ({ score, flags }) => {
+        socket.to(meetingId).emit("room:score-update", {
+            userId,
+            score,
+            flags,
+        });
     });
 
     // ── Clean disconnect ──────────────────────────────────────

@@ -23,10 +23,10 @@ app.use(express.json());
 // CORS Middleware
 app.use((req, res, next) => {
     const origin = req.headers.origin;
-    if (origin && origin.startsWith("http://localhost:")) {
+    if (origin) {
         res.setHeader("Access-Control-Allow-Origin", origin);
     }
-    res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+    res.setHeader("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
     res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
     res.setHeader("Access-Control-Allow-Credentials", "true");
     if (req.method === "OPTIONS") {
@@ -45,7 +45,9 @@ const io = new Server<
     SocketData
 >(server, {
     cors: {
-        origin: ["http://localhost:3000"],
+        origin: (requestOrigin, callback) => {
+            callback(null, requestOrigin || true);
+        },
         methods: ["GET", "POST"],
         credentials: true,
     },
@@ -142,6 +144,43 @@ app.post("/api/auth/login", async (req, res) => {
     res.json({ token, user: { id: user.id, name: user.name, email: user.email } });
 });
 
+// Register — creates a new user and returns JWT
+app.post("/api/auth/register", async (req, res) => {
+    const { name, email, password } = req.body;
+    if (!name || !email || !password) {
+        res.status(400).json({ error: "Name, email, and password are required" });
+        return;
+    }
+    try {
+        const existing = await prisma.user.findUnique({ where: { email } });
+        if (existing) {
+            res.status(400).json({ error: "Email is already registered" });
+            return;
+        }
+
+        const user = await prisma.user.create({
+            data: {
+                name,
+                email,
+                passwordHash: password, // dev stub raw password
+                role: "USER"
+            }
+        });
+
+        const { signToken } = await import("./middleware/auth");
+        const token = signToken({
+            sub: user.id,
+            email: user.email,
+            name: user.name,
+            role: user.role,
+        });
+        res.json({ token, user: { id: user.id, name: user.name, email: user.email } });
+    } catch (err) {
+        console.error("Registration failed:", err);
+        res.status(500).json({ error: "Internal server error" });
+    }
+});
+
 // Create meeting + invite participants (host only)
 app.post("/api/meetings", async (req, res) => {
     const { title, scheduledAt, participantIds, token } = req.body;
@@ -197,10 +236,280 @@ app.get("/api/meetings", async (req, res) => {
                 some: { userId },
             },
         },
+        include: {
+            participants: true,
+        },
         orderBy: { scheduledAt: "desc" },
     });
 
     res.json({ meetings: userMeetings });
+});
+
+// Get all users
+app.get("/api/users", async (req, res) => {
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith("Bearer ")) {
+        res.status(401).json({ error: "Missing or invalid token" });
+        return;
+    }
+    const token = authHeader.split(" ")[1];
+    let claims;
+    try {
+        const { verifyToken } = await import("./middleware/auth");
+        claims = verifyToken(token);
+    } catch {
+        res.status(401).json({ error: "Invalid token" });
+        return;
+    }
+
+    try {
+        const users = await prisma.user.findMany({
+            select: { id: true, name: true, email: true }
+        });
+        res.json({ users });
+    } catch (err) {
+        console.error("Failed to fetch users:", err);
+        res.status(500).json({ error: "Internal server error" });
+    }
+});
+
+// Update user profile
+app.put("/api/users/profile", async (req, res) => {
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith("Bearer ")) {
+        res.status(401).json({ error: "Missing or invalid token" });
+        return;
+    }
+    const token = authHeader.split(" ")[1];
+    let claims;
+    try {
+        const { verifyToken } = await import("./middleware/auth");
+        claims = verifyToken(token);
+    } catch {
+        res.status(401).json({ error: "Invalid token" });
+        return;
+    }
+
+    const { name, email } = req.body;
+    if (!name || !email) {
+        res.status(400).json({ error: "Name and email are required" });
+        return;
+    }
+
+    try {
+        const updatedUser = await prisma.user.update({
+            where: { id: claims.sub },
+            data: { name, email },
+        });
+        res.json({ user: { id: updatedUser.id, name: updatedUser.name, email: updatedUser.email } });
+    } catch (err) {
+        console.error("Failed to update profile:", err);
+        res.status(500).json({ error: "Internal server error" });
+    }
+});
+
+// Update user password
+app.put("/api/users/password", async (req, res) => {
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith("Bearer ")) {
+        res.status(401).json({ error: "Missing or invalid token" });
+        return;
+    }
+    const token = authHeader.split(" ")[1];
+    let claims;
+    try {
+        const { verifyToken } = await import("./middleware/auth");
+        claims = verifyToken(token);
+    } catch {
+        res.status(401).json({ error: "Invalid token" });
+        return;
+    }
+
+    const { currentPassword, newPassword } = req.body;
+    if (!currentPassword || !newPassword) {
+        res.status(400).json({ error: "Current and new passwords are required" });
+        return;
+    }
+
+    try {
+        const user = await prisma.user.findUnique({ where: { id: claims.sub } });
+        if (!user || user.passwordHash !== currentPassword) {
+            res.status(401).json({ error: "Invalid current password" });
+            return;
+        }
+
+        await prisma.user.update({
+            where: { id: claims.sub },
+            data: { passwordHash: newPassword },
+        });
+        res.json({ success: true });
+    } catch (err) {
+        console.error("Failed to update password:", err);
+        res.status(500).json({ error: "Internal server error" });
+    }
+});
+
+// Update meeting
+app.put("/api/meetings/:meetingId", async (req, res) => {
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith("Bearer ")) {
+        res.status(401).json({ error: "Missing or invalid token" });
+        return;
+    }
+    const token = authHeader.split(" ")[1];
+    let claims;
+    try {
+        const { verifyToken } = await import("./middleware/auth");
+        claims = verifyToken(token);
+    } catch {
+        res.status(401).json({ error: "Invalid token" });
+        return;
+    }
+
+    const { meetingId } = req.params;
+    const { title, scheduledAt } = req.body;
+
+    try {
+        const meeting = await prisma.meeting.findUnique({
+            where: { id: meetingId },
+        });
+
+        if (!meeting) {
+            res.status(404).json({ error: "Meeting not found" });
+            return;
+        }
+
+        if (meeting.hostId !== claims.sub) {
+            res.status(403).json({ error: "Forbidden: Only host can edit meeting" });
+            return;
+        }
+
+        const updatedMeeting = await prisma.meeting.update({
+            where: { id: meetingId },
+            data: {
+                title: title ?? undefined,
+                scheduledAt: scheduledAt ? new Date(scheduledAt) : undefined,
+            },
+        });
+
+        res.json({ meeting: updatedMeeting });
+    } catch (err) {
+        console.error("Failed to reschedule meeting:", err);
+        res.status(500).json({ error: "Internal server error" });
+    }
+});
+
+// Cancel meeting
+app.delete("/api/meetings/:meetingId", async (req, res) => {
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith("Bearer ")) {
+        res.status(401).json({ error: "Missing or invalid token" });
+        return;
+    }
+    const token = authHeader.split(" ")[1];
+    let claims;
+    try {
+        const { verifyToken } = await import("./middleware/auth");
+        claims = verifyToken(token);
+    } catch {
+        res.status(401).json({ error: "Invalid token" });
+        return;
+    }
+
+    const { meetingId } = req.params;
+
+    try {
+        const meeting = await prisma.meeting.findUnique({
+            where: { id: meetingId },
+        });
+
+        if (!meeting) {
+            res.status(404).json({ error: "Meeting not found" });
+            return;
+        }
+
+        if (meeting.hostId !== claims.sub) {
+            res.status(403).json({ error: "Forbidden: Only host can cancel meeting" });
+            return;
+        }
+
+        await prisma.meeting.update({
+            where: { id: meetingId },
+            data: { status: "CANCELLED" },
+        });
+
+        res.json({ success: true });
+    } catch (err) {
+        console.error("Failed to cancel meeting:", err);
+        res.status(500).json({ error: "Internal server error" });
+    }
+});
+
+// Update meeting participants
+app.put("/api/meetings/:meetingId/participants", async (req, res) => {
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith("Bearer ")) {
+        res.status(401).json({ error: "Missing or invalid token" });
+        return;
+    }
+    const token = authHeader.split(" ")[1];
+    let claims;
+    try {
+        const { verifyToken } = await import("./middleware/auth");
+        claims = verifyToken(token);
+    } catch {
+        res.status(401).json({ error: "Invalid token" });
+        return;
+    }
+
+    const { meetingId } = req.params;
+    const { participantIds } = req.body;
+
+    if (!Array.isArray(participantIds)) {
+        res.status(400).json({ error: "participantIds must be an array" });
+        return;
+    }
+
+    try {
+        const meeting = await prisma.meeting.findUnique({
+            where: { id: meetingId },
+        });
+
+        if (!meeting) {
+            res.status(404).json({ error: "Meeting not found" });
+            return;
+        }
+
+        if (meeting.hostId !== claims.sub) {
+            res.status(403).json({ error: "Forbidden: Only host can manage participants" });
+            return;
+        }
+
+        // Delete existing participant relationships (except host)
+        await prisma.meetingParticipant.deleteMany({
+            where: {
+                meetingId,
+                userId: { not: claims.sub }
+            }
+        });
+
+        // Insert new participant relationships
+        await prisma.meetingParticipant.createMany({
+            data: participantIds
+                .filter(id => id !== claims.sub)
+                .map(userId => ({
+                    meetingId,
+                    userId,
+                    status: "INVITED"
+                })),
+            skipDuplicates: true
+        });
+
+        res.json({ success: true });
+    } catch (err) {
+        console.error("Failed to manage participants:", err);
+        res.status(500).json({ error: "Internal server error" });
+    }
 });
 
 // Health check
