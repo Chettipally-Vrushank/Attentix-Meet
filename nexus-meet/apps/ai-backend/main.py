@@ -68,17 +68,25 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     # ── 2. Whisper STT ────────────────────────────────────────
     model_size = os.getenv("WHISPER_MODEL", "tiny")   # tiny | base | small
     logger.info(f"Loading Whisper [{model_size}] — first run downloads weights...")
-    whisper = WhisperClient(model_size=model_size)
-    await whisper.load()
-    logger.info(f"✅ Whisper [{model_size}] ready")
+    try:
+        whisper = WhisperClient(model_size=model_size)
+        await whisper.load()
+        logger.info(f"✅ Whisper [{model_size}] ready")
+    except Exception as e:
+        logger.error(f"❌ Failed to load Whisper: {e}")
+        whisper = None
 
     # ── 3. Toxicity classifier ────────────────────────────────
     tox_model     = os.getenv("TOXICITY_MODEL",     "unitary/toxic-bert")
     tox_threshold = float(os.getenv("TOXICITY_THRESHOLD", "0.90"))
     logger.info(f"Loading toxicity model [{tox_model}] — may download ~400 MB...")
-    toxicity = ToxicityClassifier(model_name=tox_model, threshold=tox_threshold)
-    await toxicity.load()
-    logger.info(f"✅ Toxicity classifier ready  (threshold={tox_threshold})")
+    try:
+        toxicity = ToxicityClassifier(model_name=tox_model, threshold=tox_threshold)
+        await toxicity.load()
+        logger.info(f"✅ Toxicity classifier ready  (threshold={tox_threshold})")
+    except Exception as e:
+        logger.error(f"❌ Failed to load Toxicity Classifier: {e}")
+        toxicity = None
 
     # ── 4. Attach to app.state (routers read from here) ───────
     app.state.whisper  = whisper

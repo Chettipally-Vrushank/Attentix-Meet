@@ -111,6 +111,10 @@ async def websocket_audio(
                     continue
 
                 # 5. Speech-to-Text via Whisper
+                if whisper is None:
+                    logger.warning("Whisper model not loaded. Skipping transcription.")
+                    continue
+
                 logger.info("VAD: Speech detected. Running Whisper transcription...")
                 transcript, lang = await whisper.transcribe(audio_np, sample_rate=SAMPLE_RATE)
                 if not transcript.strip():
@@ -120,7 +124,12 @@ async def websocket_audio(
                 logger.info(f"Speech [Lang={lang}]: {transcript}")
 
                 # 6. Toxicity Classification (toxic-bert)
-                toxicity_score, category = await toxicity.classify(transcript)
+                if toxicity is None:
+                    logger.warning("Toxicity classifier not loaded. Skipping classification.")
+                    toxicity_score = 0.0
+                    category = None
+                else:
+                    toxicity_score, category = await toxicity.classify(transcript)
 
                 # 7. Database Write: Insert transcript chunk
                 chunk_id = await upsert_transcript_chunk(
