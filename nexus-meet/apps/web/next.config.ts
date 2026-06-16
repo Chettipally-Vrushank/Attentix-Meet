@@ -1,4 +1,5 @@
 import type { NextConfig } from "next";
+import path from "path";
 
 const nextConfig: NextConfig = {
   output: "standalone",
@@ -7,7 +8,9 @@ const nextConfig: NextConfig = {
     config.resolve.fallback = { fs: false, path: false };
     return config;
   },
-  turbopack: {},
+  turbopack: {
+    root: path.resolve(process.cwd(), "../../"),
+  },
 };
 
 export default nextConfig;

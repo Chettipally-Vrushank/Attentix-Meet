@@ -7,6 +7,7 @@ import { EngagementTimeline }   from "@/components/analytics/EngagementTimeline"
 import { SpeakingTimeChart }    from "@/components/analytics/SpeakingTimeChart";
 import { ParticipantTable }     from "@/components/analytics/ParticipantTable";
 import { ModerationLog }        from "@/components/analytics/ModerationLog";
+import { Navbar }               from "@/components/Navbar";
 
 function fmtDuration(ms: number) {
   const m = Math.floor(ms / 60000);
@@ -55,31 +56,37 @@ export default function AnalyticsDashboard() {
   return (
     <div style={{ minHeight: "100vh", background: "var(--bg-base)" }}>
 
-      {/* ── Header ─────────────────────────────────────────── */}
+      <Navbar />
       <div style={{
+        background: "var(--bg-surface)",
         borderBottom: "1px solid var(--border)",
-        background:   "var(--bg-surface)",
-        padding:      "16px 32px",
-        display:      "flex", alignItems: "center", justifyContent: "space-between",
-        position:     "sticky", top: 0, zIndex: 10,
+        padding: "12px 32px",
+        display: "flex",
+        alignItems: "center",
+        gap: 16
       }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
-          <button
-            onClick={() => router.push("/")}
-            style={{
-              background: "var(--bg-raised)", border: "1px solid var(--border)",
-              borderRadius: 8, padding: "6px 10px", cursor: "pointer",
-              color: "var(--text-secondary)", display: "flex", alignItems: "center", gap: 5,
-              fontSize: 13,
-            }}>
-            <ArrowLeft size={14}/> Back
-          </button>
-          <div>
-            <h1 style={{ fontSize: 16, fontWeight: 600 }}>Meeting Report</h1>
-            <p style={{ fontSize: 11, color: "var(--text-muted)", fontFamily: "var(--font-mono)" }}>
-              {meetingId}
-            </p>
-          </div>
+        <button
+          onClick={() => router.push("/analytics")}
+          style={{
+            background: "var(--bg-raised)",
+            border: "1px solid var(--border)",
+            borderRadius: 8,
+            padding: "6px 12px",
+            cursor: "pointer",
+            color: "var(--text-secondary)",
+            display: "flex",
+            alignItems: "center",
+            gap: 6,
+            fontSize: 12,
+            fontWeight: 500
+          }}
+        >
+          <ArrowLeft size={12}/> Back to Analytics
+        </button>
+        <div style={{ width: 1, height: 16, background: "var(--border)" }} />
+        <div>
+          <span style={{ fontSize: 13, color: "var(--text-secondary)", fontWeight: 500 }}>Meeting Report:</span>
+          <span style={{ marginLeft: 6, fontSize: 12, color: "var(--text-muted)", fontFamily: "var(--font-mono)" }}>{meetingId}</span>
         </div>
       </div>
 

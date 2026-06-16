@@ -93,16 +93,88 @@ export default function MeetingRoom() {
         display:        "flex", alignItems: "center", justifyContent: "space-between",
         background:     "var(--bg-surface)",
       }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <div style={{
-            width: 8, height: 8, borderRadius: "50%",
-            background: "var(--success)",
-            boxShadow:  "0 0 8px var(--success)",
-          }}/>
-          <span style={{ fontWeight: 600, fontSize: 15 }}>NexusMeet</span>
-          <span style={{ color: "var(--text-muted)", fontSize: 13, fontFamily: "var(--font-mono)" }}>
-            {meetingId ? meetingId.slice(0, 8) : ""}...
-          </span>
+        <div style={{ display: "flex", alignItems: "center", gap: 24 }}>
+          {/* Logo / Status */}
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <div style={{
+              width: 8, height: 8, borderRadius: "50%",
+              background: "var(--success)",
+              boxShadow:  "0 0 8px var(--success)",
+            }}/>
+            <span style={{ fontWeight: 600, fontSize: 15 }}>NexusMeet</span>
+            <span style={{ color: "var(--text-muted)", fontSize: 13, fontFamily: "var(--font-mono)" }}>
+              {meetingId ? meetingId.slice(0, 8) : ""}...
+            </span>
+          </div>
+
+          <div style={{ width: 1, height: 16, background: "var(--border)" }} />
+
+          {/* Navigation Links */}
+          <div style={{ display: "flex", gap: 8 }}>
+            <button
+              onClick={() => {
+                if (confirm("Leave this meeting to go to Dashboard?")) {
+                  handleLeave();
+                  router.push("/meeting/create");
+                }
+              }}
+              style={{
+                background: "transparent",
+                border: "none",
+                color: "var(--text-secondary)",
+                fontSize: 12,
+                fontWeight: 500,
+                cursor: "pointer",
+                padding: "4px 8px",
+                borderRadius: 4,
+                transition: "all 0.15s ease"
+              }}
+            >
+              Dashboard
+            </button>
+            <button
+              onClick={() => {
+                if (confirm("Leave this meeting to view Analytics?")) {
+                  handleLeave();
+                  router.push("/analytics");
+                }
+              }}
+              style={{
+                background: "transparent",
+                border: "none",
+                color: "var(--text-secondary)",
+                fontSize: 12,
+                fontWeight: 500,
+                cursor: "pointer",
+                padding: "4px 8px",
+                borderRadius: 4,
+                transition: "all 0.15s ease"
+              }}
+            >
+              Analytics
+            </button>
+            <button
+              onClick={() => {
+                if (confirm("Leave this meeting to view Profile?")) {
+                  handleLeave();
+                  router.push("/profile");
+                }
+              }}
+              style={{
+                background: "transparent",
+                border: "none",
+                color: "var(--text-secondary)",
+                fontSize: 12,
+                fontWeight: 500,
+                cursor: "pointer",
+                padding: "4px 8px",
+                borderRadius: 4,
+                transition: "all 0.15s ease"
+              }}
+            >
+              Profile
+            </button>
+          </div>
         </div>
         <span style={{ fontSize: 13, color: "var(--text-secondary)" }}>
           {allParticipants.length} participant{allParticipants.length !== 1 ? "s" : ""}

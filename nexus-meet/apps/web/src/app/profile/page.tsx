@@ -3,7 +3,8 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useMeetingStore } from "@/lib/store";
 import Link from "next/link";
-import { ArrowLeft, User, BarChart2, Key, Calendar, Clock, Smile, LogOut } from "lucide-react";
+import { User, BarChart2, Key, Calendar, Clock, Smile } from "lucide-react";
+import { Navbar } from "@/components/Navbar";
 
 const SIGNAL_URL = process.env.NEXT_PUBLIC_SIGNAL_URL ?? "http://localhost:3001";
 const AI_URL = process.env.NEXT_PUBLIC_AI_URL_HTTP ?? "http://localhost:8000";
@@ -125,10 +126,7 @@ export default function ProfilePage() {
     }
   };
 
-  const handleLogout = () => {
-    setAuth("", "", "");
-    router.push("/");
-  };
+
 
   if (!token || !userId) return null;
 
@@ -141,41 +139,7 @@ export default function ProfilePage() {
       display: "flex",
       flexDirection: "column"
     }}>
-      {/* Header */}
-      <header style={{
-        display: "flex", justifyContent: "space-between", alignItems: "center",
-        padding: "16px 32px", borderBottom: "1px solid var(--border)",
-        background: "var(--bg-surface)",
-        position: "sticky", top: 0, zIndex: 10,
-      }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
-          <button
-            onClick={() => router.push("/")}
-            style={{
-              background: "var(--bg-raised)", border: "1px solid var(--border)",
-              borderRadius: 8, padding: "8px 14px", cursor: "pointer",
-              color: "var(--text-secondary)", display: "flex", alignItems: "center", gap: 6,
-              fontSize: 13, fontWeight: 500, transition: "background 0.15s"
-            }}
-          >
-            <ArrowLeft size={14}/> Back to Dashboard
-          </button>
-          <span style={{ fontWeight: 600, fontSize: 16 }}>Profile & Analytics</span>
-        </div>
-
-        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <button
-            onClick={handleLogout}
-            style={{
-              background: "transparent", border: "none", color: "var(--text-secondary)",
-              cursor: "pointer", display: "flex", alignItems: "center", gap: 6, fontSize: 13,
-              transition: "color 0.15s"
-            }}
-          >
-            <LogOut size={14}/> Logout
-          </button>
-        </div>
-      </header>
+      <Navbar />
 
       {/* Main Content Layout */}
       <main style={{
