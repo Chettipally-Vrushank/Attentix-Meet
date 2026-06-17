@@ -11,6 +11,7 @@ export interface ServerToClientEvents {
     "room:user-left": (payload: UserLeftPayload) => void;
     "room:user-kicked": (payload: UserKickedPayload) => void;
     "room:participants": (participants: UserJoinedPayload[]) => void;
+    "room:meeting-ended": () => void;
 
     // Host alerts (only sent to host socket)
     "room:alert": (payload: RoomAlertPayload) => void;

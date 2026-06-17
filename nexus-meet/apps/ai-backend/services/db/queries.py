@@ -145,3 +145,17 @@ async def log_moderation_event(
         )
         await session.commit()
     return event_id
+
+
+async def increment_speaking_time(meeting_id: str, user_id: str, duration_ms: int) -> None:
+    """Increment the participant's total speaking time by duration_ms."""
+    async with AsyncSessionLocal() as session:
+        await session.execute(
+            text("""
+                UPDATE meeting_participants
+                SET total_speaking_ms = total_speaking_ms + :dur
+                WHERE meeting_id = :mid AND user_id = :uid
+            """),
+            {"mid": meeting_id, "uid": user_id, "dur": duration_ms}
+        )
+        await session.commit()

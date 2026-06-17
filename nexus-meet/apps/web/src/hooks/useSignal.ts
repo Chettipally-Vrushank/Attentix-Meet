@@ -102,6 +102,11 @@ export function useSignal(meetingId: string | null) {
             });
         });
 
+        socket.on("room:meeting-ended", () => {
+            localStream?.getTracks().forEach(t => t.stop());
+            router.push(`/analytics/${meetingId}`);
+        });
+
         // WebRTC signaling relay
         socket.on("signal:offer", ({ targetUserId, sdp }) =>
             peerRef.current?.handleOffer(targetUserId, sdp));
@@ -111,7 +116,7 @@ export function useSignal(meetingId: string | null) {
             peerRef.current?.handleIce(targetUserId, candidate));
 
         return socket;
-    }, [token, meetingId, localStream, userId, updateParticipant]);
+    }, [token, meetingId, localStream, userId, updateParticipant, router]);
 
     useEffect(() => {
         const socket = connect();
@@ -134,5 +139,22 @@ export function useSignal(meetingId: string | null) {
         socketRef.current?.emit("mod:kick-user", { userId: targetUserId, meetingId });
     }, [meetingId]);
 
-    return { kickUser };
+    const endMeeting = useCallback(async () => {
+        if (!token || !meetingId) return false;
+        try {
+            const res = await fetch(`${SIGNAL_URL}/api/meetings/${meetingId}/end`, {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    "Authorization": `Bearer ${token}`
+                }
+            });
+            return res.ok;
+        } catch (err) {
+            console.error("Failed to end meeting:", err);
+            return false;
+        }
+    }, [token, meetingId]);
+
+    return { kickUser, endMeeting };
 }

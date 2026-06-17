@@ -1,5 +1,5 @@
 "use client";
-import { Mic, MicOff, Video, VideoOff, PhoneOff, Shield } from "lucide-react";
+import { Mic, MicOff, Video, VideoOff, PhoneOff, Shield, StopCircle } from "lucide-react";
 
 interface Props {
   muted:      boolean;
@@ -9,9 +9,13 @@ interface Props {
   onLeave:    () => void;
   myScore:    number;
   myFlags:    string[];
+  isHost?:    boolean;
+  onEnd?:     () => void;
 }
 
-export function ControlBar({ muted, videoOn, onMute, onVideo, onLeave, myScore, myFlags }: Props) {
+export function ControlBar({
+  muted, videoOn, onMute, onVideo, onLeave, myScore, myFlags, isHost = false, onEnd
+}: Props) {
   const scoreColor =
     myScore >= 70 ? "var(--success)" :
     myScore >= 45 ? "var(--warn)"    : "var(--danger)";
@@ -66,6 +70,13 @@ export function ControlBar({ muted, videoOn, onMute, onVideo, onLeave, myScore, 
       <Btn onClick={onLeave} danger title="Leave meeting" forceRed>
         <PhoneOff size={18}/>
       </Btn>
+
+      {/* End Meeting (Host only) */}
+      {isHost && onEnd && (
+        <Btn onClick={onEnd} danger title="End meeting for all" forceRed>
+          <StopCircle size={18}/>
+        </Btn>
+      )}
     </div>
   );
 }
@@ -81,7 +92,8 @@ function Btn({ children, onClick, danger, title, forceRed }: any) {
         border:       "none",
         background:   forceRed ? "var(--danger)" :
                       danger   ? "var(--danger-soft)" : "var(--bg-raised)",
-        color:        danger || forceRed ? "var(--danger)" : "var(--text-primary)",
+        color:        forceRed ? "#fff" :
+                      danger   ? "var(--danger)" : "var(--text-primary)",
         cursor:       "pointer",
         display:      "flex", alignItems: "center", justifyContent: "center",
         transition:   "background 0.15s",

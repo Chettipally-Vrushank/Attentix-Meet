@@ -245,6 +245,45 @@ app.get("/api/meetings", async (req, res) => {
     res.json({ meetings: userMeetings });
 });
 
+// Get details for a specific meeting
+app.get("/api/meetings/:meetingId", async (req, res) => {
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith("Bearer ")) {
+        res.status(401).json({ error: "Missing or invalid token" });
+        return;
+    }
+    const token = authHeader.split(" ")[1];
+    let claims;
+    try {
+        const { verifyToken } = await import("./middleware/auth");
+        claims = verifyToken(token);
+    } catch {
+        res.status(401).json({ error: "Invalid token" });
+        return;
+    }
+
+    const { meetingId } = req.params;
+
+    try {
+        const meeting = await prisma.meeting.findUnique({
+            where: { id: meetingId },
+            include: {
+                participants: true,
+            },
+        });
+
+        if (!meeting) {
+            res.status(404).json({ error: "Meeting not found" });
+            return;
+        }
+
+        res.json({ meeting });
+    } catch (err) {
+        console.error("Failed to fetch meeting details:", err);
+        res.status(500).json({ error: "Internal server error" });
+    }
+});
+
 // Get all users
 app.get("/api/users", async (req, res) => {
     const authHeader = req.headers.authorization;
@@ -508,6 +547,134 @@ app.put("/api/meetings/:meetingId/participants", async (req, res) => {
         res.json({ success: true });
     } catch (err) {
         console.error("Failed to manage participants:", err);
+        res.status(500).json({ error: "Internal server error" });
+    }
+});
+
+// End meeting (host only)
+app.post("/api/meetings/:meetingId/end", async (req, res) => {
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith("Bearer ")) {
+        res.status(401).json({ error: "Missing or invalid token" });
+        return;
+    }
+    const token = authHeader.split(" ")[1];
+    let claims;
+    try {
+        const { verifyToken } = await import("./middleware/auth");
+        claims = verifyToken(token);
+    } catch {
+        res.status(401).json({ error: "Invalid token" });
+        return;
+    }
+
+    const { meetingId } = req.params;
+    const userId = claims.sub;
+
+    try {
+        const meeting = await prisma.meeting.findUnique({
+            where: { id: meetingId },
+            include: { participants: true }
+        });
+
+        if (!meeting) {
+            res.status(404).json({ error: "Meeting not found" });
+            return;
+        }
+
+        if (meeting.hostId !== userId) {
+            res.status(403).json({ error: "Forbidden: Only host can end meeting" });
+            return;
+        }
+
+        // Calculate analytics before updating status to ENDED
+        // 1. Get engagement logs for this meeting
+        const engagementLogs = await prisma.engagementLog.findMany({
+            where: { meetingId }
+        });
+
+        // Calculate avg engagement score per participant
+        const userLogsMap = new Map<string, number[]>();
+        engagementLogs.forEach(log => {
+            if (!userLogsMap.has(log.userId)) {
+                userLogsMap.set(log.userId, []);
+            }
+            userLogsMap.get(log.userId)!.push(log.engagementScore);
+        });
+
+        // 2. Update status of participants (final engagement score & leftAt)
+        const participants = meeting.participants;
+        for (const p of participants) {
+            const logs = userLogsMap.get(p.userId) || [];
+            const avgScore = logs.length > 0 
+                ? logs.reduce((sum, val) => sum + val, 0) / logs.length 
+                : 75.0; // Default score if no logs
+
+            await prisma.meetingParticipant.update({
+                where: {
+                    meetingId_userId: {
+                        meetingId,
+                        userId: p.userId
+                    }
+                },
+                data: {
+                    status: p.status === "CONNECTED" ? "DISCONNECTED" : p.status,
+                    leftAt: p.leftAt || new Date(),
+                    finalEngagementScore: avgScore
+                }
+            });
+        }
+
+        // 3. Compute meeting analytics stats
+        const totalLogs = engagementLogs.length;
+        const avgRoomEngagement = totalLogs > 0
+            ? engagementLogs.reduce((sum, log) => sum + log.engagementScore, 0) / totalLogs
+            : 75.0;
+
+        const durationMs = Math.max(0, Date.now() - meeting.createdAt.getTime());
+
+        // Count moderation events
+        const toxicEventsCount = await prisma.moderationEvent.count({
+            where: { meetingId }
+        });
+
+        // Count kicked participants
+        const kickedCount = await prisma.meetingParticipant.count({
+            where: { meetingId, status: "KICKED" }
+        });
+
+        // Create or update MeetingAnalytics
+        await prisma.meetingAnalytics.upsert({
+            where: { meetingId },
+            create: {
+                meetingId,
+                avgEngagementScore: avgRoomEngagement,
+                totalSpeakingTimeMs: durationMs,
+                toxicPhrasesCount: toxicEventsCount,
+                kickedParticipants: kickedCount,
+                summaryText: `Meeting ended. Duration: ${Math.round(durationMs / 60000)}m. Average engagement: ${Math.round(avgRoomEngagement)}%.`
+            },
+            update: {
+                avgEngagementScore: avgRoomEngagement,
+                totalSpeakingTimeMs: durationMs,
+                toxicPhrasesCount: toxicEventsCount,
+                kickedParticipants: kickedCount,
+                summaryText: `Meeting ended. Duration: ${Math.round(durationMs / 60000)}m. Average engagement: ${Math.round(avgRoomEngagement)}%.`
+            }
+        });
+
+        // 4. Finally, update meeting status to ENDED
+        await prisma.meeting.update({
+            where: { id: meetingId },
+            data: { status: "ENDED" }
+        });
+
+        // 5. Notify all sockets in this meeting room that the meeting has ended
+        io.to(meetingId).emit("room:meeting-ended");
+
+        res.json({ success: true });
+    } catch (err) {
+        console.error("Failed to end meeting:", err);
         res.status(500).json({ error: "Internal server error" });
     }
 });

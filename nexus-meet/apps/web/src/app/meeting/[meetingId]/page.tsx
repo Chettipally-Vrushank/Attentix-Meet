@@ -1,4 +1,5 @@
 "use client";
+export const dynamic = "force-dynamic";
 import { useEffect, useRef, useState, useCallback } from "react";
 import { useParams, useRouter }   from "next/navigation";
 import { useMeetingStore }        from "@/lib/store";
@@ -9,6 +10,8 @@ import { useAudioStream }         from "@/hooks/useAudioStream";
 import { VideoTile }              from "@/components/meeting/VideoTile";
 import { ControlBar }             from "@/components/meeting/ControlBar";
 import { ModerationAlert }        from "@/components/meeting/ModerationAlert";
+
+const SIGNAL_URL = process.env.NEXT_PUBLIC_SIGNAL_URL ?? "http://localhost:3001";
 
 export default function MeetingRoom() {
   const params   = useParams();
@@ -26,11 +29,27 @@ export default function MeetingRoom() {
   const [videoOn, setVideoOn] = useState(true);
   const localVideoRef = useRef<HTMLVideoElement>(null);
 
-  // Redirect to login if no auth
+  // Redirect to login if no auth, set meeting ID, and fetch meetings list to check host status
   useEffect(() => {
     if (!token || !userId) { router.push("/login"); return; }
     setMeetingId(meetingId);
-  }, [token, userId]);
+
+    fetch(`${SIGNAL_URL}/api/meetings`, {
+      headers: {
+        "Authorization": `Bearer ${token}`
+      }
+    })
+      .then(res => res.json())
+      .then(data => {
+        if (data.meetings) {
+          const currentMeeting = data.meetings.find((m: any) => m.id === meetingId);
+          if (currentMeeting) {
+            setIsHost(currentMeeting.hostId === userId);
+          }
+        }
+      })
+      .catch(console.error);
+  }, [token, userId, meetingId]);
 
   // Get local media stream
   useEffect(() => {
@@ -51,7 +70,7 @@ export default function MeetingRoom() {
   }, []);
 
   // Hooks — telemetry path switches based on video state
-  const { kickUser } = useSignal(meetingId);
+  const { kickUser, endMeeting } = useSignal(meetingId);
   useTelemetry(!videoOn);                         // browser telemetry when video OFF
   useMediaPipe(localVideoRef, videoOn);            // MediaPipe when video ON
   useAudioStream(localStream, true);               // always stream audio
@@ -69,6 +88,15 @@ export default function MeetingRoom() {
   const handleLeave = () => {
     localStream?.getTracks().forEach(t => t.stop());
     router.push("/");
+  };
+
+  const handleEndMeeting = async () => {
+    if (confirm("Are you sure you want to end this meeting for everyone?")) {
+      const success = await endMeeting();
+      if (success) {
+        router.push(`/analytics/${meetingId}`);
+      }
+    }
   };
 
   const allParticipants = Array.from(participants.values());
@@ -214,6 +242,8 @@ export default function MeetingRoom() {
         onMute={handleMute} onVideo={handleVideo}
         onLeave={handleLeave}
         myScore={myScore} myFlags={myFlags}
+        isHost={isHost}
+        onEnd={handleEndMeeting}
       />
     </div>
   );

@@ -1,4 +1,5 @@
 "use client";
+export const dynamic = "force-dynamic";
 import { useParams, useRouter } from "next/navigation";
 import { Users, Clock, TrendingUp, ShieldAlert, ArrowLeft, Bell } from "lucide-react";
 import { useAnalytics }         from "@/hooks/useAnalytics";

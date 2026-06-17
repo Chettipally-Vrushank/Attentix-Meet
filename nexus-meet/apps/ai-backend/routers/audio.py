@@ -110,6 +110,13 @@ async def websocket_audio(
                     logger.debug("VAD: Silence detected. Skipping Whisper STT.")
                     continue
 
+                # Increment speaking time in DB
+                try:
+                    from services.db.queries import increment_speaking_time
+                    await increment_speaking_time(meeting_id, user_id, CHUNKS_MS)
+                except Exception as e:
+                    logger.error(f"Failed to increment speaking time for user {user_id}: {e}")
+
                 # 5. Speech-to-Text via Whisper
                 if whisper is None:
                     logger.warning("Whisper model not loaded. Skipping transcription.")
